@@ -1,15 +1,14 @@
 # app.py
 """
 Slot Machine Simulator — Lucu & Cerah
+Versi final untuk Streamlit Cloud
 Fitur:
 - Simulator play-money (tidak untuk judi uang nyata)
 - Riwayat spin (tabel + unduh CSV)
 - Animasi gulungan
-- Efek suara (dibuat programatik)
 - Mode Auto-Spin
 - Tampilan lucu/cerah dengan emoji
 Requirements: streamlit, pillow, pandas
-Run: streamlit run app.py
 """
 
 import streamlit as st
@@ -48,7 +47,7 @@ def generate_sine_wav(freq=440.0, duration=0.2, volume=0.5, framerate=22050):
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as wf:
         wf.setnchannels(1)
-        wf.setsampwidth(2)  # 2 bytes (16-bit)
+        wf.setsampwidth(2)
         wf.setframerate(framerate)
         for i in range(n_samples):
             t = float(i) / framerate
@@ -59,7 +58,6 @@ def generate_sine_wav(freq=440.0, duration=0.2, volume=0.5, framerate=22050):
     return buf.read()
 
 def generate_spin_sound():
-    # a short descending whoosh made of quick beeps
     chunks = []
     freqs = [800, 700, 600, 500, 400]
     for f in freqs:
@@ -67,49 +65,36 @@ def generate_spin_sound():
     return b"".join(chunks)
 
 def generate_win_sound():
-    # ascending pleasant beep sequence
     chunks = []
     freqs = [520, 640, 780]
     for f in freqs:
         chunks.append(generate_sine_wav(freq=f, duration=0.12, volume=0.22))
     return b"".join(chunks)
 
-# Pre-generate sounds (bytes)
 SPIN_SOUND = generate_spin_sound()
 WIN_SOUND = generate_win_sound()
 
 # -------------------------
-# Image helpers (render reels)
+# Image helpers (render reels safely)
 # -------------------------
 def render_reels_as_image(reels, width=540, height=160, bg=(255, 255, 245)):
     im = Image.new("RGB", (width, height), color=bg)
     draw = ImageDraw.Draw(im)
-    # Try to pick a reasonable font; fallback if not available.
-    try:
-        font = ImageFont.truetype("seguiemj.ttf", 72)
-    except:
-        try:
-            font = ImageFont.truetype("arial.ttf", 72)
-        except:
-            font = ImageFont.load_default()
 
-    # Draw three boxes
+    font = ImageFont.load_default()  # font default supaya aman di Linux/Cloud
+
     box_w = (width - 40) // 3
     gap = 10
     x = 20
     for symbol in reels:
-        # rounded rectangle background for each reel cell
         rect = (x, 12, x + box_w, height - 12)
         draw.rounded_rectangle(rect, radius=12, fill=(255, 255, 255))
-        # draw symbol centered
-        text = symbol
-        w, h = draw.textsize(text, font=font)
-        tx = x + (box_w - w) / 2
-        ty = (height - h) / 2
-        draw.text((tx, ty), text, font=font, fill=(20, 20, 20))
+        # posisi simbol perkiraan, tidak pakai textsize()
+        tx = x + box_w // 4
+        ty = height // 4
+        draw.text((tx, ty), symbol, font=font, fill=(20, 20, 20))
         x += box_w + gap
 
-    # small playful border
     draw.rectangle((0, 0, width - 1, height - 1), outline=(230, 180, 255))
     return im
 
@@ -120,13 +105,11 @@ def spin_once():
     return [random.choice(SYMBOLS) for _ in range(3)]
 
 def evaluate_spin(reels, bet):
-    # Returns (win_amount, message)
     if reels[0] == reels[1] == reels[2]:
         sym = reels[0]
         multiplier = PAYOUT_TABLE.get(sym, 0)
         win = bet * multiplier
         return int(win), f"🎉 Three {sym}! You win {win} coins."
-    # two of a kind
     if reels[0] == reels[1] or reels[0] == reels[2] or reels[1] == reels[2]:
         win = int(bet * 1.5)
         return int(win), f"🙂 Two of a kind — you win {win} coins."
@@ -140,19 +123,18 @@ def init_state():
     st.session_state.setdefault("last_reels", ["-", "-", "-"])
     st.session_state.setdefault("last_bet", 0)
     st.session_state.setdefault("message", "Selamat datang! Gunakan koin mainan untuk bermain.")
-    st.session_state.setdefault("history", [])  # list of dicts
+    st.session_state.setdefault("history", [])
     st.session_state.setdefault("auto_running", False)
 
 init_state()
 
 # -------------------------
-# Layout (fun & bright)
+# Layout
 # -------------------------
 st.markdown(
     """
     <style>
     .stApp { background: linear-gradient(180deg,#fff8f0,#fff); }
-    .big-title { font-size: 28px; font-weight: 700; color: #b21f66; }
     .accent { color: #ff6fb5; font-weight:700; }
     </style>
     """,
@@ -167,7 +149,6 @@ col_left, col_right = st.columns([2, 1])
 with col_left:
     st.subheader("Reels")
     img_placeholder = st.empty()
-    # render the current reels
     img = render_reels_as_image(st.session_state.last_reels)
     img_placeholder.image(img, use_column_width=True)
 
@@ -181,7 +162,6 @@ with col_right:
     spin_speed = st.slider("Kecepatan animasi (detik per frame)", 0.03, 0.3, 0.09, step=0.01)
     animation_frames = st.slider("Jumlah frame animasi", 4, 20, 9, step=1)
 
-    # Auto-spin controls
     st.markdown("---")
     st.subheader("Auto-Spin")
     auto_spin = st.checkbox("Aktifkan Auto-Spin")
@@ -189,7 +169,6 @@ with col_right:
     auto_delay = st.slider("Delay antar putaran (s)", 0.1, 2.0, 0.5, step=0.1)
 
     st.markdown("---")
-    # Buttons
     col_a, col_b = st.columns(2)
     with col_a:
         spin_btn = st.button("Spin 🎰")
@@ -210,40 +189,29 @@ with col_right:
         st.download_button("Download CSV", data=csv, file_name="slot_history.csv", mime="text/csv")
 
 # -------------------------
-# Spin action functions
+# Spin functions
 # -------------------------
 def do_spin(bet_amount, frames=9, speed=0.08, play_sounds=True):
-    # check balance
     if bet_amount > st.session_state.balance:
         st.warning("Saldo tidak cukup untuk taruhan tersebut.")
         return
-
     st.session_state.last_bet = bet_amount
-    # deduct bet
     st.session_state.balance -= bet_amount
-
-    # Animation: show random frames
     for i in range(frames):
         tmp = [random.choice(SYMBOLS) for _ in range(3)]
         img = render_reels_as_image(tmp)
         img_placeholder.image(img, use_column_width=True)
         if play_sounds:
-            # play spin sound for the frame (short)
             st.audio(SPIN_SOUND, format="audio/wav")
         time.sleep(speed)
-
-    # final reels
     final = spin_once()
     st.session_state.last_reels = final
     img_placeholder.image(render_reels_as_image(final), use_column_width=True)
-
-    # evaluate
     win, msg = evaluate_spin(final, bet_amount)
     if win > 0:
         st.session_state.balance += win
         if play_sounds:
             st.audio(WIN_SOUND, format="audio/wav")
-    # update message & history
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     msg_full = f"{msg} (Taruhan: {bet_amount}) · Saldo sekarang: {st.session_state.balance}"
     st.session_state.message = msg_full
@@ -257,9 +225,8 @@ def do_spin(bet_amount, frames=9, speed=0.08, play_sounds=True):
     })
 
 # -------------------------
-# Handle user interactions
+# Handle interactions
 # -------------------------
-# Single Spin button
 if 'action_in_progress' not in st.session_state:
     st.session_state['action_in_progress'] = False
 
@@ -273,29 +240,18 @@ if spin_btn and not st.session_state.action_in_progress:
         do_spin(bet, frames=animation_frames, speed=spin_speed, play_sounds=True)
     st.session_state.action_in_progress = False
 
-# Auto-spin logic: either via checkbox + auto_btn or checkbox only
 if auto_btn:
-    # toggle auto_running
     st.session_state.auto_running = not st.session_state.auto_running
-
-# If auto_spin checkbox is on OR auto_running flag:
-if (auto_spin or st.session_state.auto_running) and st.session_state.auto_running is False:
-    # if checkbox enabled but not started, don't auto-run until user presses Start Auto
-    pass
 
 if st.session_state.auto_running:
     st.session_state.action_in_progress = True
     spins_done = 0
-    # perform up to auto_count spins or until balance insufficient
     for i in range(int(auto_count)):
         if st.session_state.balance <= 0:
             st.warning("Saldo habis. Auto-Spin berhenti.")
             break
-        # spin once
         do_spin(bet, frames=animation_frames, speed=spin_speed, play_sounds=True)
         spins_done += 1
-        # allow user to stop via Toggle button: check the flag
-        # This is controlled by clicking the Stop Auto button which toggles auto_running to False.
         if not st.session_state.auto_running:
             break
         time.sleep(auto_delay)
@@ -304,7 +260,7 @@ if st.session_state.auto_running:
     st.success(f"Auto-Spin selesai ({spins_done} putaran).")
 
 # -------------------------
-# Show history table
+# Show history
 # -------------------------
 st.markdown("---")
 st.subheader("📜 Riwayat Spin")
@@ -312,20 +268,15 @@ if len(st.session_state.history) == 0:
     st.info("Belum ada riwayat — mainkan dulu beberapa putaran!")
 else:
     df_hist = pd.DataFrame(st.session_state.history)
-    # show first N rows with expand option
     with st.expander("Tampilkan riwayat (klik untuk buka)"):
         st.dataframe(df_hist, use_container_width=True)
-        st.markdown("Riwayat terbaru berada di paling atas (urut menurun).")
 
-# -------------------------
-# Footer / Notes
-# -------------------------
 st.markdown("---")
 st.markdown(
     """
     **Catatan penting:**  
     - Aplikasi ini **hanya simulator** menggunakan koin mainan — tidak ada uang nyata.  
     - Jangan gunakan aplikasi ini untuk aktivitas perjudian berbayar.  
-    - Butuh fitur tambahan? mis. lebih banyak simbol, mode turnamen (play-money), visual upgrade — beri tahu saya!
+    - Bisa dikembangkan dengan simbol tambahan, grafis custom, mode turnamen play-money.
     """
 )
